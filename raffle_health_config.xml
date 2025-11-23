@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<raffleHealthModel>
+  <!-- Global baselines from historical data (e.g. November campaigns) -->
+  <baselines>
+    <newCustomers>
+      <!-- Average LTV for a new customer over 20-day window -->
+      <ltv>45.00</ltv>
+      <!-- Target LTV/CAC ratio we want to achieve -->
+      <targetLtvToCac>2.5</targetLtvToCac>
+    </newCustomers>
+    <retention>
+      <!-- Customer retention rate over 20 days (e.g. 8% of existing base returns) -->
+      <crr20d>0.08</crr20d>
+      <!-- GMV per retained user over 20-day window -->
+      <gmvPerRetainedUser20d>35.00</gmvPerRetainedUser20d>
+      <!-- Size of existing customer base -->
+      <baseExistingCustomers>5000</baseExistingCustomers>
+    </retention>
+  </baselines>
+
+  <!-- Thresholds for traffic-light status -->
+  <thresholds>
+    <!-- GMV progress ratio thresholds -->
+    <gmv>
+      <green>0.95</green>  <!-- ≥95% of forecast = GREEN -->
+      <amber>0.80</amber>  <!-- ≥80% of forecast = AMBER -->
+    </gmv>
+    <!-- Retention progress ratio thresholds -->
+    <retentionProgress>
+      <green>0.95</green>
+      <amber>0.80</amber>
+    </retentionProgress>
+    <!-- CAC/target ratio thresholds (lower is better) -->
+    <cacOverTarget>
+      <green>1.0</green>   <!-- ≤100% of target = GREEN -->
+      <amber>1.2</amber>   <!-- ≤120% of target = AMBER -->
+    </cacOverTarget>
+    <!-- CPA/target ratio thresholds (lower is better) -->
+    <cpaOverTarget>
+      <green>1.0</green>
+      <amber>1.2</amber>
+    </cpaOverTarget>
+  </thresholds>
+
+  <!-- Individual raffles -->
+  <raffles>
+    <raffle id="dubai-flat-jan-2025">
+      <meta>
+        <name>Dubai Flat Raffle - January 2025</name>
+        <startDate>2025-01-15</startDate>
+        <endDate>2025-02-04</endDate>
+      </meta>
+      <targets>
+        <targetGmv>100000</targetGmv>
+        <averageTicketPrice>25.00</averageTicketPrice>
+        <expectedAovNew>40.00</expectedAovNew>
+        <expectedAovRet>42.00</expectedAovRet>
+      </targets>
+      <budget>
+        <total>15000</total>
+        <newSplit>0.75</newSplit>
+        <retSplit>0.25</retSplit>
+      </budget>
+    </raffle>
+  </raffles>
+</raffleHealthModel>
+

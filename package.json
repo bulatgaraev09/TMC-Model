@@ -1,0 +1,17 @@
+{
+  "name": "raffle-health-agent",
+  "version": "1.0.0",
+  "description": "XML-driven raffle health checker (GMV/CPA/CAC vs forecast)",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "check": "ts-node src/checkRaffle.ts"
+  },
+  "dependencies": {
+    "fast-xml-parser": "^4.5.0"
+  },
+  "devDependencies": {
+    "ts-node": "^10.9.2",
+    "typescript": "^5.5.0"
+  }
+}
