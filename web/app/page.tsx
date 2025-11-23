@@ -2,6 +2,18 @@
 
 import { useState } from 'react';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import {
+  PhaseConfig,
+  CampaignConfig,
+  PhaseSnapshot,
+  PhaseHealth,
+  PhasePlan,
+  PhaseId,
+  TrafficLight,
+  planPhase,
+  evaluatePhaseHealth,
+  createDefaultCampaign,
+} from '@/lib/phases';
 
 interface QuarterlyData {
   quarter: string;
@@ -32,7 +44,13 @@ interface CalculatorResult {
   quarterlyData: QuarterlyData[];
 }
 
+type Tab = 'calculator' | 'phases';
+
 export default function Home() {
+  // Tab state
+  const [activeTab, setActiveTab] = useState<Tab>('calculator');
+  
+  // Calculator tab state
   const [targetGMV, setTargetGMV] = useState('100000');
   const [expectedAOVNew, setExpectedAOVNew] = useState('40');
   const [marketingBudget, setMarketingBudget] = useState('15000');
@@ -42,6 +60,21 @@ export default function Home() {
   const [result, setResult] = useState<CalculatorResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  
+  // Phases tab state
+  const [campaign, setCampaign] = useState<CampaignConfig>(() =>
+    createDefaultCampaign(20, 100000, 15000, 40, 18)
+  );
+  const [selectedPhaseId, setSelectedPhaseId] = useState<PhaseId>('launch');
+  const [phaseSnapshot, setPhaseSnapshot] = useState<Partial<PhaseSnapshot>>({
+    dayInPhase: 1,
+    gmvToDate: 0,
+    spendToDate: 0,
+    newUsersToDate: 0,
+    returningUsersToDate: 0,
+    ordersToDate: 0,
+  });
+  const [phaseHealth, setPhaseHealth] = useState<PhaseHealth | null>(null);
 
   const handleCalculate = async () => {
     setLoading(true);
@@ -80,7 +113,7 @@ export default function Home() {
       <div className="container mx-auto px-4 py-12">
         <div className="max-w-6xl mx-auto">
           {/* Header */}
-          <div className="text-center mb-12">
+          <div className="text-center mb-8">
             <h1 className="text-5xl font-bold text-gray-900 mb-4">
               🎟️ Raffle Calculator
             </h1>
@@ -88,10 +121,39 @@ export default function Home() {
               Plan your raffle performance targets with precision
             </p>
           </div>
+          
+          {/* Tab Navigation */}
+          <div className="flex justify-center mb-8">
+            <div className="bg-white rounded-xl shadow-lg p-2 inline-flex gap-2">
+              <button
+                onClick={() => setActiveTab('calculator')}
+                className={`px-6 py-3 rounded-lg font-semibold transition-all ${
+                  activeTab === 'calculator'
+                    ? 'bg-indigo-600 text-white shadow-md'
+                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+                }`}
+              >
+                📊 Calculator
+              </button>
+              <button
+                onClick={() => setActiveTab('phases')}
+                className={`px-6 py-3 rounded-lg font-semibold transition-all ${
+                  activeTab === 'phases'
+                    ? 'bg-indigo-600 text-white shadow-md'
+                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+                }`}
+              >
+                🎯 Phases / Live Tracking
+              </button>
+            </div>
+          </div>
 
-          <div className="grid md:grid-cols-2 gap-8">
-            {/* Input Form */}
-            <div className="bg-white rounded-2xl shadow-xl p-8">
+          {/* Tab 1: Calculator */}
+          {activeTab === 'calculator' && (
+            <>
+              <div className="grid md:grid-cols-2 gap-8">
+                {/* Input Form */}
+                <div className="bg-white rounded-2xl shadow-xl p-8">
               <h2 className="text-2xl font-bold text-gray-800 mb-6">
                 Your Raffle Details
               </h2>
@@ -443,6 +505,427 @@ export default function Home() {
               </div>
             </div>
           </div>
+            </>
+          )}
+
+          {/* Tab 2: Phases / Live Tracking */}
+          {activeTab === 'phases' && <PhasesTab campaign={campaign} setCampaign={setCampaign} />}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Component for the Phases / Live Tracking tab
+function PhasesTab({
+  campaign,
+  setCampaign,
+}: {
+  campaign: CampaignConfig;
+  setCampaign: (campaign: CampaignConfig) => void;
+}) {
+  const [selectedPhaseId, setSelectedPhaseId] = useState<PhaseId>('launch');
+  const [snapshot, setSnapshot] = useState<Partial<PhaseSnapshot>>({
+    dayInPhase: 1,
+    gmvToDate: 0,
+    spendToDate: 0,
+    newUsersToDate: 0,
+    returningUsersToDate: 0,
+    ordersToDate: 0,
+  });
+  const [health, setHealth] = useState<PhaseHealth | null>(null);
+  const [error, setError] = useState('');
+  
+  // Update phase configuration
+  const updatePhase = (phaseId: PhaseId, updates: Partial<PhaseConfig>) => {
+    setCampaign({
+      ...campaign,
+      phases: campaign.phases.map((p) =>
+        p.id === phaseId ? { ...p, ...updates } : p
+      ),
+    });
+  };
+  
+  // Calculate cumulative stats up to the selected phase
+  const calculateCumulativeStats = () => {
+    const selectedPhase = campaign.phases.find((p) => p.id === selectedPhaseId);
+    if (!selectedPhase) return { gmvToDate: 0, spendToDate: 0, newUsersToDate: 0, ordersToDate: 0 };
+    
+    // Sum up all completed phases before current phase, plus current phase progress
+    let cumulativeGMV = Number(snapshot.gmvToDate || 0);
+    let cumulativeSpend = Number(snapshot.spendToDate || 0);
+    let cumulativeNewUsers = Number(snapshot.newUsersToDate || 0);
+    let cumulativeOrders = Number(snapshot.ordersToDate || 0);
+    
+    // Add completed phases (simplified - assuming we're tracking cumulative values directly)
+    return {
+      gmvToDate: cumulativeGMV,
+      spendToDate: cumulativeSpend,
+      newUsersToDate: cumulativeNewUsers,
+      ordersToDate: cumulativeOrders,
+    };
+  };
+  
+  // Evaluate phase health
+  const handleEvaluate = () => {
+    setError('');
+    
+    // Validate inputs
+    if (!snapshot.dayInPhase || snapshot.dayInPhase <= 0) {
+      setError('Please enter a valid day in phase');
+      return;
+    }
+    
+    try {
+      const phaseSnapshotComplete: PhaseSnapshot = {
+        phaseId: selectedPhaseId,
+        dayInPhase: Number(snapshot.dayInPhase),
+        gmvToDate: Number(snapshot.gmvToDate || 0),
+        spendToDate: Number(snapshot.spendToDate || 0),
+        newUsersToDate: Number(snapshot.newUsersToDate || 0),
+        returningUsersToDate: Number(snapshot.returningUsersToDate || 0),
+        ordersToDate: Number(snapshot.ordersToDate || 0),
+      };
+      
+      const cumulativeStats = calculateCumulativeStats();
+      const result = evaluatePhaseHealth(campaign, phaseSnapshotComplete, cumulativeStats);
+      setHealth(result);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Evaluation failed');
+      console.error(err);
+    }
+  };
+  
+  // Get traffic light color
+  const getStatusColor = (status: TrafficLight) => {
+    switch (status) {
+      case 'GREEN':
+        return 'bg-green-500';
+      case 'AMBER':
+        return 'bg-yellow-500';
+      case 'RED':
+        return 'bg-red-500';
+    }
+  };
+  
+  return (
+    <div className="space-y-8">
+      {/* Phase Planner Section */}
+      <div className="bg-white rounded-2xl shadow-xl p-8">
+        <h2 className="text-2xl font-bold text-gray-800 mb-6">📋 Phase Planner</h2>
+        
+        <div className="space-y-6">
+          {/* Campaign-level inputs */}
+          <div className="grid md:grid-cols-3 gap-4 pb-6 border-b">
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                Campaign Duration (days)
+              </label>
+              <input
+                type="number"
+                value={campaign.durationDays}
+                onChange={(e) => setCampaign({ ...campaign, durationDays: Number(e.target.value) })}
+                className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:border-indigo-500 focus:outline-none"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                Target GMV (£)
+              </label>
+              <input
+                type="number"
+                value={campaign.targetGMV}
+                onChange={(e) => setCampaign({ ...campaign, targetGMV: Number(e.target.value) })}
+                className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:border-indigo-500 focus:outline-none"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                Total Budget (£)
+              </label>
+              <input
+                type="number"
+                value={campaign.totalBudget}
+                onChange={(e) => setCampaign({ ...campaign, totalBudget: Number(e.target.value) })}
+                className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:border-indigo-500 focus:outline-none"
+              />
+            </div>
+          </div>
+          
+          {/* Phase cards */}
+          <div className="grid gap-4">
+            {campaign.phases.map((phase) => {
+              const plan = planPhase(phase);
+              return (
+                <div
+                  key={phase.id}
+                  className="border-2 border-gray-200 rounded-lg p-6 hover:border-indigo-300 transition-colors"
+                >
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-lg font-bold text-gray-800">{phase.label}</h3>
+                    <span className="text-sm text-gray-500">
+                      Days {phase.startDay}–{phase.endDay}
+                    </span>
+                  </div>
+                  
+                  <div className="grid md:grid-cols-4 gap-4 mb-4">
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-600 mb-1">
+                        Target GMV (£)
+                      </label>
+                      <input
+                        type="number"
+                        value={phase.targetGMV}
+                        onChange={(e) =>
+                          updatePhase(phase.id, { targetGMV: Number(e.target.value) })
+                        }
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-indigo-500 focus:outline-none text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-600 mb-1">
+                        Target CAC (£)
+                      </label>
+                      <input
+                        type="number"
+                        value={phase.targetCAC}
+                        onChange={(e) =>
+                          updatePhase(phase.id, { targetCAC: Number(e.target.value) })
+                        }
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-indigo-500 focus:outline-none text-sm"
+                        step="0.5"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-600 mb-1">
+                        Expected AOV (£)
+                      </label>
+                      <input
+                        type="number"
+                        value={phase.expectedAOV}
+                        onChange={(e) =>
+                          updatePhase(phase.id, { expectedAOV: Number(e.target.value) })
+                        }
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-indigo-500 focus:outline-none text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-600 mb-1">
+                        Budget (£)
+                      </label>
+                      <input
+                        type="number"
+                        value={phase.budget}
+                        onChange={(e) =>
+                          updatePhase(phase.id, { budget: Number(e.target.value) })
+                        }
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-indigo-500 focus:outline-none text-sm"
+                      />
+                    </div>
+                  </div>
+                  
+                  {/* Derived metrics */}
+                  <div className="bg-indigo-50 rounded-lg p-4">
+                    <div className="grid grid-cols-3 gap-4 text-center">
+                      <div>
+                        <p className="text-xs text-indigo-600 font-semibold mb-1">
+                          Planned New Users
+                        </p>
+                        <p className="text-lg font-bold text-indigo-900">
+                          {plan.plannedNewUsers.toLocaleString()}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-indigo-600 font-semibold mb-1">
+                          Planned Orders
+                        </p>
+                        <p className="text-lg font-bold text-indigo-900">
+                          {plan.plannedOrders.toLocaleString()}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-indigo-600 font-semibold mb-1">
+                          Returning Orders
+                        </p>
+                        <p className="text-lg font-bold text-indigo-900">
+                          {plan.plannedReturningOrders.toLocaleString()}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+      
+      {/* Live Tracking Section */}
+      <div className="bg-white rounded-2xl shadow-xl p-8">
+        <h2 className="text-2xl font-bold text-gray-800 mb-6">🔴 Live Tracking</h2>
+        
+        <div className="space-y-6">
+          {/* Phase selector and inputs */}
+          <div className="grid md:grid-cols-2 gap-6">
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                Current Phase
+              </label>
+              <select
+                value={selectedPhaseId}
+                onChange={(e) => setSelectedPhaseId(e.target.value as PhaseId)}
+                className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-indigo-500 focus:outline-none text-lg"
+              >
+                {campaign.phases.map((phase) => (
+                  <option key={phase.id} value={phase.id}>
+                    {phase.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                Day in Phase
+              </label>
+              <input
+                type="number"
+                value={snapshot.dayInPhase}
+                onChange={(e) =>
+                  setSnapshot({ ...snapshot, dayInPhase: Number(e.target.value) })
+                }
+                className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-indigo-500 focus:outline-none text-lg"
+                min="1"
+              />
+            </div>
+          </div>
+          
+          {/* Snapshot metrics */}
+          <div className="grid md:grid-cols-3 gap-4">
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                GMV to Date (£)
+              </label>
+              <input
+                type="number"
+                value={snapshot.gmvToDate}
+                onChange={(e) =>
+                  setSnapshot({ ...snapshot, gmvToDate: Number(e.target.value) })
+                }
+                className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:border-indigo-500 focus:outline-none"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                Spend to Date (£)
+              </label>
+              <input
+                type="number"
+                value={snapshot.spendToDate}
+                onChange={(e) =>
+                  setSnapshot({ ...snapshot, spendToDate: Number(e.target.value) })
+                }
+                className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:border-indigo-500 focus:outline-none"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                Orders to Date
+              </label>
+              <input
+                type="number"
+                value={snapshot.ordersToDate}
+                onChange={(e) =>
+                  setSnapshot({ ...snapshot, ordersToDate: Number(e.target.value) })
+                }
+                className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:border-indigo-500 focus:outline-none"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                New Users to Date
+              </label>
+              <input
+                type="number"
+                value={snapshot.newUsersToDate}
+                onChange={(e) =>
+                  setSnapshot({ ...snapshot, newUsersToDate: Number(e.target.value) })
+                }
+                className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:border-indigo-500 focus:outline-none"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                Returning Users to Date
+              </label>
+              <input
+                type="number"
+                value={snapshot.returningUsersToDate}
+                onChange={(e) =>
+                  setSnapshot({ ...snapshot, returningUsersToDate: Number(e.target.value) })
+                }
+                className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:border-indigo-500 focus:outline-none"
+              />
+            </div>
+          </div>
+          
+          <button
+            onClick={handleEvaluate}
+            className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-6 rounded-lg transition-colors text-lg shadow-lg"
+          >
+            Evaluate Phase Health
+          </button>
+          
+          {error && (
+            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
+              {error}
+            </div>
+          )}
+          
+          {/* Health Results */}
+          {health && (
+            <div className="space-y-6 pt-6 border-t-2">
+              {/* Status Badges */}
+              <div className="grid md:grid-cols-2 gap-4">
+                <div className="bg-gray-50 rounded-lg p-6">
+                  <p className="text-sm text-gray-600 font-semibold mb-3">Phase Status</p>
+                  <div className="flex items-center gap-3">
+                    <div className={`w-6 h-6 rounded-full ${getStatusColor(health.phaseStatus)}`} />
+                    <span className="text-2xl font-bold text-gray-900">{health.phaseStatus}</span>
+                  </div>
+                  <p className="text-sm text-gray-500 mt-2">
+                    Projected Phase GMV: £{health.projectedGMVPhase.toLocaleString()}
+                  </p>
+                </div>
+                
+                <div className="bg-gray-50 rounded-lg p-6">
+                  <p className="text-sm text-gray-600 font-semibold mb-3">Campaign Status</p>
+                  <div className="flex items-center gap-3">
+                    <div className={`w-6 h-6 rounded-full ${getStatusColor(health.campaignStatus)}`} />
+                    <span className="text-2xl font-bold text-gray-900">{health.campaignStatus}</span>
+                  </div>
+                  <p className="text-sm text-gray-500 mt-2">
+                    Projected Campaign GMV: £{health.projectedGMVCampaign.toLocaleString()}
+                  </p>
+                </div>
+              </div>
+              
+              {/* Recommendations */}
+              <div>
+                <h3 className="font-semibold text-gray-700 mb-3">💡 Recommendations</h3>
+                <div className="space-y-2">
+                  {health.notes.map((note, idx) => (
+                    <div
+                      key={idx}
+                      className="bg-blue-50 border-l-4 border-blue-400 p-4 text-sm"
+                    >
+                      {note}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
