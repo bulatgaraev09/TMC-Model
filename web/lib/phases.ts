@@ -366,3 +366,78 @@ export function createDefaultCampaign(
   };
 }
 
+// ============================================================================
+// Ticket-based Phase Calculator
+// ============================================================================
+
+export type SpendIntensity = "none" | "low" | "normal" | "high";
+
+export interface PhaseInput {
+  id: string;
+  label: string;
+  days: number;
+  ticketsTarget: number;
+  expectedGMV: number;
+  spendIntensity: SpendIntensity;
+}
+
+export interface PhaseOutput {
+  id: string;
+  label: string;
+  days: number;
+  ticketsTarget: number;
+  expectedGMV: number;
+  avgTicketPrice: number;
+  discountPercent: number;
+  approxCAC: number | null;
+  marketingBudget: number;
+}
+
+export interface CampaignTicketParams {
+  totalTickets: number;
+  baseTicketPrice: number;
+  expectedAOV: number;
+}
+
+/**
+ * CAC mapping by spend intensity level
+ */
+export const CAC_BY_INTENSITY: Record<SpendIntensity, number | null> = {
+  none:   null,
+  low:    10,
+  normal: 15,
+  high:   25,
+};
+
+/**
+ * Computes phase output metrics based on ticket targets and spend intensity.
+ * 
+ * @param campaign - Campaign-level ticket parameters
+ * @param phase - Phase input with tickets target and spend intensity
+ * @returns PhaseOutput with calculated metrics
+ */
+export function computePhaseOutput(
+  campaign: CampaignTicketParams,
+  phase: PhaseInput
+): PhaseOutput {
+  const avgTicketPrice = phase.expectedGMV / phase.ticketsTarget;
+  const discountFrac   = 1 - avgTicketPrice / campaign.baseTicketPrice;
+  const discountPercent = discountFrac * 100;
+
+  const approxCAC = CAC_BY_INTENSITY[phase.spendIntensity];
+  const paidUnits = approxCAC == null ? 0 : phase.ticketsTarget;
+  const marketingBudget = approxCAC == null ? 0 : approxCAC * paidUnits;
+
+  return {
+    id: phase.id,
+    label: phase.label,
+    days: phase.days,
+    ticketsTarget: phase.ticketsTarget,
+    expectedGMV: phase.expectedGMV,
+    avgTicketPrice,
+    discountPercent,
+    approxCAC,
+    marketingBudget,
+  };
+}
+

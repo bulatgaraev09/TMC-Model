@@ -13,6 +13,12 @@ import {
   planPhase,
   evaluatePhaseHealth,
   createDefaultCampaign,
+  SpendIntensity,
+  PhaseInput,
+  PhaseOutput,
+  CampaignTicketParams,
+  computePhaseOutput,
+  CAC_BY_INTENSITY,
 } from '@/lib/phases';
 
 interface QuarterlyData {
@@ -56,6 +62,11 @@ export default function Home() {
   const [marketingBudget, setMarketingBudget] = useState('15000');
   const [durationDays, setDurationDays] = useState('20');
   const [targetCAC, setTargetCAC] = useState('18');
+  
+  // Campaign-level ticket parameters (optional)
+  const [totalTickets, setTotalTickets] = useState('');
+  const [baseTicketPrice, setBaseTicketPrice] = useState('');
+  const [ticketAOV, setTicketAOV] = useState('');
   
   const [result, setResult] = useState<CalculatorResult | null>(null);
   const [loading, setLoading] = useState(false);
@@ -230,6 +241,63 @@ export default function Home() {
                   <p className="text-xs text-gray-500 mt-1">
                     Not sure? Try 14-21 days for optimal retention
                   </p>
+                </div>
+
+                {/* Optional Ticket Parameters */}
+                <div className="pt-4 border-t border-gray-200">
+                  <h3 className="text-sm font-bold text-gray-700 mb-3">
+                    🎫 Optional: Ticket-Based Planning
+                  </h3>
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-700 mb-2">
+                        Total Tickets to Sell
+                      </label>
+                      <input
+                        type="number"
+                        value={totalTickets}
+                        onChange={(e) => setTotalTickets(e.target.value)}
+                        className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:border-indigo-500 focus:outline-none"
+                        placeholder="10000"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-700 mb-2">
+                        Base Ticket Price (£)
+                      </label>
+                      <input
+                        type="number"
+                        value={baseTicketPrice}
+                        onChange={(e) => setBaseTicketPrice(e.target.value)}
+                        className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:border-indigo-500 focus:outline-none"
+                        placeholder="10"
+                        step="0.01"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-700 mb-2">
+                        Expected AOV (£)
+                      </label>
+                      <input
+                        type="number"
+                        value={ticketAOV}
+                        onChange={(e) => setTicketAOV(e.target.value)}
+                        className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:border-indigo-500 focus:outline-none"
+                        placeholder="40"
+                        step="0.01"
+                      />
+                    </div>
+                    {totalTickets && baseTicketPrice && ticketAOV && (
+                      <div className="bg-indigo-50 rounded-lg p-3">
+                        <p className="text-xs text-indigo-600 font-semibold mb-1">
+                          Tickets per Order
+                        </p>
+                        <p className="text-xl font-bold text-indigo-900">
+                          {(Number(ticketAOV) / Number(baseTicketPrice)).toFixed(1)}
+                        </p>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 <button
@@ -509,7 +577,21 @@ export default function Home() {
           )}
 
           {/* Tab 2: Phases / Live Tracking */}
-          {activeTab === 'phases' && <PhasesTab campaign={campaign} setCampaign={setCampaign} />}
+          {activeTab === 'phases' && (
+            <PhasesTab 
+              campaign={campaign} 
+              setCampaign={setCampaign}
+              campaignTicketParams={
+                totalTickets && baseTicketPrice && ticketAOV
+                  ? {
+                      totalTickets: Number(totalTickets),
+                      baseTicketPrice: Number(baseTicketPrice),
+                      expectedAOV: Number(ticketAOV),
+                    }
+                  : undefined
+              }
+            />
+          )}
         </div>
       </div>
     </div>
@@ -520,9 +602,11 @@ export default function Home() {
 function PhasesTab({
   campaign,
   setCampaign,
+  campaignTicketParams,
 }: {
   campaign: CampaignConfig;
   setCampaign: (campaign: CampaignConfig) => void;
+  campaignTicketParams?: CampaignTicketParams;
 }) {
   const [selectedPhaseId, setSelectedPhaseId] = useState<PhaseId>('launch');
   const [snapshot, setSnapshot] = useState<Partial<PhaseSnapshot>>({
@@ -926,6 +1010,270 @@ function PhasesTab({
               </div>
             </div>
           )}
+        </div>
+      </div>
+      
+      {/* Ticket-Based Phase Calculator */}
+      {campaignTicketParams && (
+        <TicketPhaseCalculator campaignTicketParams={campaignTicketParams} />
+      )}
+    </div>
+  );
+}
+
+// Component for ticket-based phase calculator
+function TicketPhaseCalculator({
+  campaignTicketParams,
+}: {
+  campaignTicketParams: CampaignTicketParams;
+}) {
+  const [phases, setPhases] = useState<PhaseInput[]>([
+    {
+      id: '1',
+      label: 'Phase 1',
+      days: 5,
+      ticketsTarget: 0,
+      expectedGMV: 0,
+      spendIntensity: 'normal',
+    },
+  ]);
+
+  const addPhase = () => {
+    const newId = (phases.length + 1).toString();
+    setPhases([
+      ...phases,
+      {
+        id: newId,
+        label: `Phase ${newId}`,
+        days: 5,
+        ticketsTarget: 0,
+        expectedGMV: 0,
+        spendIntensity: 'normal',
+      },
+    ]);
+  };
+
+  const removePhase = (id: string) => {
+    if (phases.length > 1) {
+      setPhases(phases.filter((p) => p.id !== id));
+    }
+  };
+
+  const updatePhase = (id: string, updates: Partial<PhaseInput>) => {
+    setPhases(phases.map((p) => (p.id === id ? { ...p, ...updates } : p)));
+  };
+
+  const outputs = phases.map((p) => computePhaseOutput(campaignTicketParams, p));
+
+  // Calculate totals
+  const totalTickets = outputs.reduce((sum, p) => sum + p.ticketsTarget, 0);
+  const totalGMV = outputs.reduce((sum, p) => sum + p.expectedGMV, 0);
+  const totalBudget = outputs.reduce((sum, p) => sum + p.marketingBudget, 0);
+
+  return (
+    <div className="bg-white rounded-2xl shadow-xl p-8">
+      <div className="flex items-center justify-between mb-6">
+        <h2 className="text-2xl font-bold text-gray-800">🎫 Ticket-Based Phase Planner</h2>
+        <button
+          onClick={addPhase}
+          className="bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors"
+        >
+          + Add Phase
+        </button>
+      </div>
+
+      {/* Campaign Summary */}
+      <div className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-lg p-4 mb-6 border-2 border-purple-200">
+        <h3 className="text-sm font-bold text-gray-700 mb-3">Campaign Parameters</h3>
+        <div className="grid grid-cols-3 gap-4 text-sm">
+          <div>
+            <p className="text-gray-600">Total Tickets</p>
+            <p className="text-lg font-bold text-gray-900">{campaignTicketParams.totalTickets.toLocaleString()}</p>
+          </div>
+          <div>
+            <p className="text-gray-600">Base Ticket Price</p>
+            <p className="text-lg font-bold text-gray-900">£{campaignTicketParams.baseTicketPrice.toFixed(2)}</p>
+          </div>
+          <div>
+            <p className="text-gray-600">Expected AOV</p>
+            <p className="text-lg font-bold text-gray-900">£{campaignTicketParams.expectedAOV.toFixed(2)}</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="space-y-4">
+        {phases.map((phase, idx) => {
+          const output = outputs[idx];
+          return (
+            <div
+              key={phase.id}
+              className="border-2 border-gray-200 rounded-lg p-6 hover:border-indigo-300 transition-colors"
+            >
+              <div className="flex items-center justify-between mb-4">
+                <input
+                  type="text"
+                  value={phase.label}
+                  onChange={(e) => updatePhase(phase.id, { label: e.target.value })}
+                  className="text-lg font-bold text-gray-800 border-b-2 border-transparent hover:border-gray-300 focus:border-indigo-500 focus:outline-none px-2 py-1"
+                />
+                {phases.length > 1 && (
+                  <button
+                    onClick={() => removePhase(phase.id)}
+                    className="text-red-600 hover:text-red-800 font-semibold text-sm"
+                  >
+                    ✕ Remove
+                  </button>
+                )}
+              </div>
+
+              {/* Input Row */}
+              <div className="grid md:grid-cols-4 gap-4 mb-4">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">
+                    Days
+                  </label>
+                  <input
+                    type="number"
+                    value={phase.days}
+                    onChange={(e) => updatePhase(phase.id, { days: Number(e.target.value) })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-indigo-500 focus:outline-none text-sm"
+                    min="1"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">
+                    Target Tickets
+                  </label>
+                  <input
+                    type="number"
+                    value={phase.ticketsTarget}
+                    onChange={(e) =>
+                      updatePhase(phase.id, { ticketsTarget: Number(e.target.value) })
+                    }
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-indigo-500 focus:outline-none text-sm"
+                    min="0"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">
+                    Expected GMV (£)
+                  </label>
+                  <input
+                    type="number"
+                    value={phase.expectedGMV}
+                    onChange={(e) =>
+                      updatePhase(phase.id, { expectedGMV: Number(e.target.value) })
+                    }
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-indigo-500 focus:outline-none text-sm"
+                    min="0"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">
+                    Spend Intensity
+                  </label>
+                  <select
+                    value={phase.spendIntensity}
+                    onChange={(e) =>
+                      updatePhase(phase.id, { spendIntensity: e.target.value as SpendIntensity })
+                    }
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-indigo-500 focus:outline-none text-sm"
+                  >
+                    <option value="none">None (Organic)</option>
+                    <option value="low">Low (£{CAC_BY_INTENSITY.low})</option>
+                    <option value="normal">Normal (£{CAC_BY_INTENSITY.normal})</option>
+                    <option value="high">High (£{CAC_BY_INTENSITY.high})</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Output Row */}
+              <div className="bg-indigo-50 rounded-lg p-4">
+                <div className="grid grid-cols-5 gap-4 text-center">
+                  <div>
+                    <p className="text-xs text-indigo-600 font-semibold mb-1">Avg Ticket Price</p>
+                    <p className="text-lg font-bold text-indigo-900">
+                      £{output.avgTicketPrice.toFixed(2)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-indigo-600 font-semibold mb-1">
+                      {output.discountPercent >= 0 ? 'Discount' : 'Surcharge'}
+                    </p>
+                    <p className="text-lg font-bold text-indigo-900">
+                      {Math.abs(output.discountPercent).toFixed(1)}%
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-indigo-600 font-semibold mb-1">Approx. CAC</p>
+                    <p className="text-lg font-bold text-indigo-900">
+                      {output.approxCAC === null ? 'Organic' : `£${output.approxCAC}`}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-indigo-600 font-semibold mb-1">Marketing Budget</p>
+                    <p className="text-lg font-bold text-indigo-900">
+                      £{output.marketingBudget.toLocaleString()}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-indigo-600 font-semibold mb-1">Days Duration</p>
+                    <p className="text-lg font-bold text-indigo-900">{output.days}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Campaign Totals */}
+      <div className="mt-6 bg-gradient-to-br from-green-50 to-teal-50 rounded-lg p-6 border-2 border-green-200">
+        <h3 className="text-lg font-bold text-gray-800 mb-4">📊 Campaign Totals</h3>
+        <div className="grid md:grid-cols-3 gap-6">
+          <div className="bg-white rounded-lg p-4">
+            <p className="text-sm text-gray-600 mb-2">Total Tickets</p>
+            <div className="space-y-1">
+              <p className="text-2xl font-bold text-gray-900">{totalTickets.toLocaleString()}</p>
+              <div className="flex justify-between text-xs">
+                <span className="text-gray-500">Campaign Target:</span>
+                <span className="font-semibold">{campaignTicketParams.totalTickets.toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between text-xs pt-1 border-t">
+                <span className="text-gray-500">Difference:</span>
+                <span
+                  className={`font-bold ${
+                    totalTickets >= campaignTicketParams.totalTickets
+                      ? 'text-green-600'
+                      : 'text-red-600'
+                  }`}
+                >
+                  {totalTickets >= campaignTicketParams.totalTickets ? '+' : ''}
+                  {(totalTickets - campaignTicketParams.totalTickets).toLocaleString()}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-lg p-4">
+            <p className="text-sm text-gray-600 mb-2">Total GMV</p>
+            <div className="space-y-1">
+              <p className="text-2xl font-bold text-gray-900">£{totalGMV.toLocaleString()}</p>
+              <p className="text-xs text-gray-500">
+                Sum of phase GMV targets
+              </p>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-lg p-4">
+            <p className="text-sm text-gray-600 mb-2">Total Marketing Budget</p>
+            <div className="space-y-1">
+              <p className="text-2xl font-bold text-gray-900">£{totalBudget.toLocaleString()}</p>
+              <p className="text-xs text-gray-500">
+                Sum of phase budgets
+              </p>
+            </div>
+          </div>
         </div>
       </div>
     </div>
