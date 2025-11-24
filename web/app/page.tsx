@@ -21,6 +21,16 @@ import {
   CAC_BY_INTENSITY,
 } from '@/lib/phases';
 
+import {
+  CACLevel,
+  PhaseInput as PlannerPhaseInput,
+  PhaseOutput as PlannerPhaseOutput,
+  CampaignInputs,
+  PhasesCalculationResult,
+  calculatePhases,
+  CAC_BY_LEVEL,
+} from '@/lib/phasePlanner';
+
 interface QuarterlyData {
   quarter: string;
   day: number;
@@ -50,7 +60,7 @@ interface CalculatorResult {
   quarterlyData: QuarterlyData[];
 }
 
-type Tab = 'calculator' | 'phases';
+type Tab = 'calculator' | 'phases' | 'phasePlanner';
 
 export default function Home() {
   // Tab state
@@ -147,6 +157,16 @@ export default function Home() {
                 📊 Calculator
               </button>
               <button
+                onClick={() => setActiveTab('phasePlanner')}
+                className={`px-6 py-3 rounded-lg font-semibold transition-all ${
+                  activeTab === 'phasePlanner'
+                    ? 'bg-indigo-600 text-white shadow-md'
+                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+                }`}
+              >
+                📋 Phases Planner
+              </button>
+              <button
                 onClick={() => setActiveTab('phases')}
                 className={`px-6 py-3 rounded-lg font-semibold transition-all ${
                   activeTab === 'phases'
@@ -154,7 +174,7 @@ export default function Home() {
                     : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
                 }`}
               >
-                🎯 Phases / Live Tracking
+                🎯 Live Tracking
               </button>
             </div>
           </div>
@@ -576,7 +596,10 @@ export default function Home() {
             </>
           )}
 
-          {/* Tab 2: Phases / Live Tracking */}
+          {/* Tab 2: Phases Planner */}
+          {activeTab === 'phasePlanner' && <PhasesPlannerTab />}
+
+          {/* Tab 3: Phases / Live Tracking */}
           {activeTab === 'phases' && (
             <PhasesTab 
               campaign={campaign} 
@@ -1276,6 +1299,415 @@ function TicketPhaseCalculator({
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+// Component for Phases Planner tab
+function PhasesPlannerTab() {
+  // Campaign inputs state
+  const [gmvTotal, setGmvTotal] = useState('100000');
+  const [aovTotal, setAovTotal] = useState('40');
+  const [budgetTotal, setBudgetTotal] = useState('15000');
+  const [cacTarget, setCacTarget] = useState('18');
+  const [durationDays, setDurationDays] = useState('20');
+  
+  // Phase inputs state
+  const [phases, setPhases] = useState<PlannerPhaseInput[]>([
+    { id: '1', label: 'Phase 1 – Launch', ticketsTarget: 2500, gmvTarget: 25000, cacLevel: 'low' },
+    { id: '2', label: 'Phase 2 – Growth', ticketsTarget: 3000, gmvTarget: 30000, cacLevel: 'medium' },
+    { id: '3', label: 'Phase 3 – Push', ticketsTarget: 2500, gmvTarget: 30000, cacLevel: 'high' },
+    { id: '4', label: 'Phase 4 – Final', ticketsTarget: 2000, gmvTarget: 15000, cacLevel: 'medium' },
+  ]);
+  
+  // Results state
+  const [result, setResult] = useState<PhasesCalculationResult | null>(null);
+  const [error, setError] = useState('');
+  
+  const updatePhase = (id: string, updates: Partial<PlannerPhaseInput>) => {
+    setPhases(phases.map((p) => (p.id === id ? { ...p, ...updates } : p)));
+    setResult(null); // Clear results when inputs change
+  };
+  
+  const handleCalculate = () => {
+    setError('');
+    
+    try {
+      const campaignInputs: CampaignInputs = {
+        GMV_total: Number(gmvTotal),
+        AOV_total: Number(aovTotal),
+        Budget_total: Number(budgetTotal),
+        CAC_target: Number(cacTarget),
+        durationDays: Number(durationDays),
+      };
+      
+      const calculationResult = calculatePhases(campaignInputs, phases);
+      setResult(calculationResult);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Calculation failed');
+      setResult(null);
+    }
+  };
+  
+  // Derived campaign metrics
+  const ordersTotal = Number(gmvTotal) / Number(aovTotal);
+  const cacImplied = Number(budgetTotal) / ordersTotal;
+  const campaignValid = Number(gmvTotal) > 0 && Number(aovTotal) > 0 && Number(budgetTotal) >= 0;
+  
+  const getCACLevelLabel = (level: CACLevel) => {
+    switch (level) {
+      case 'none': return 'No spend';
+      case 'low': return `Low (£${CAC_BY_LEVEL.low})`;
+      case 'medium': return `Medium (£${CAC_BY_LEVEL.medium})`;
+      case 'high': return `High (£${CAC_BY_LEVEL.high})`;
+    }
+  };
+  
+  return (
+    <div className="space-y-8">
+      {/* Campaign Section */}
+      <div className="bg-white rounded-2xl shadow-xl p-8">
+        <h2 className="text-2xl font-bold text-gray-800 mb-6">📊 Campaign Parameters</h2>
+        
+        <div className="grid md:grid-cols-3 gap-6 mb-6">
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-2">
+              Total GMV (£)
+            </label>
+            <input
+              type="number"
+              value={gmvTotal}
+              onChange={(e) => {
+                setGmvTotal(e.target.value);
+                setResult(null);
+              }}
+              className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:border-indigo-500 focus:outline-none"
+              placeholder="100000"
+            />
+          </div>
+          
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-2">
+              Total AOV (£)
+            </label>
+            <input
+              type="number"
+              value={aovTotal}
+              onChange={(e) => {
+                setAovTotal(e.target.value);
+                setResult(null);
+              }}
+              className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:border-indigo-500 focus:outline-none"
+              placeholder="40"
+              step="0.01"
+            />
+          </div>
+          
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-2">
+              Total Marketing Budget (£)
+            </label>
+            <input
+              type="number"
+              value={budgetTotal}
+              onChange={(e) => {
+                setBudgetTotal(e.target.value);
+                setResult(null);
+              }}
+              className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:border-indigo-500 focus:outline-none"
+              placeholder="15000"
+            />
+          </div>
+          
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-2">
+              Target CAC (£)
+            </label>
+            <input
+              type="number"
+              value={cacTarget}
+              onChange={(e) => {
+                setCacTarget(e.target.value);
+                setResult(null);
+              }}
+              className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:border-indigo-500 focus:outline-none"
+              placeholder="18"
+              step="0.5"
+            />
+          </div>
+          
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-2">
+              Duration (days)
+            </label>
+            <input
+              type="number"
+              value={durationDays}
+              onChange={(e) => {
+                setDurationDays(e.target.value);
+                setResult(null);
+              }}
+              className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:border-indigo-500 focus:outline-none"
+              placeholder="20"
+            />
+          </div>
+        </div>
+        
+        {/* Derived Campaign Metrics */}
+        {campaignValid && (
+          <div className="bg-indigo-50 rounded-lg p-4">
+            <h3 className="text-sm font-bold text-indigo-900 mb-3">Campaign Overview</h3>
+            <div className="grid md:grid-cols-3 gap-4 text-sm">
+              <div>
+                <p className="text-indigo-600">Target Orders</p>
+                <p className="text-xl font-bold text-indigo-900">{Math.round(ordersTotal).toLocaleString()}</p>
+              </div>
+              <div>
+                <p className="text-indigo-600">Implied CAC from Budget</p>
+                <p className="text-xl font-bold text-indigo-900">£{cacImplied.toFixed(2)}</p>
+              </div>
+              <div>
+                <p className="text-indigo-600">Target CAC</p>
+                <p className="text-xl font-bold text-indigo-900">£{Number(cacTarget).toFixed(2)}</p>
+              </div>
+            </div>
+            <p className="text-xs text-indigo-700 mt-3">
+              {cacImplied < Number(cacTarget) 
+                ? `✅ Budget allows for CAC £${(Number(cacTarget) - cacImplied).toFixed(2)} below target` 
+                : cacImplied > Number(cacTarget)
+                ? `⚠️ Budget implies CAC £${(cacImplied - Number(cacTarget)).toFixed(2)} above target`
+                : '✅ Budget matches target CAC perfectly'}
+            </p>
+          </div>
+        )}
+      </div>
+      
+      {/* Phases Input Section */}
+      <div className="bg-white rounded-2xl shadow-xl p-8">
+        <h2 className="text-2xl font-bold text-gray-800 mb-6">📋 Phase Configuration</h2>
+        
+        <div className="space-y-4">
+          {phases.map((phase) => (
+            <div key={phase.id} className="border-2 border-gray-200 rounded-lg p-6">
+              <div className="grid md:grid-cols-4 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">
+                    Phase Label
+                  </label>
+                  <input
+                    type="text"
+                    value={phase.label}
+                    onChange={(e) => updatePhase(phase.id, { label: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-indigo-500 focus:outline-none text-sm"
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">
+                    Tickets Target
+                  </label>
+                  <input
+                    type="number"
+                    value={phase.ticketsTarget}
+                    onChange={(e) => updatePhase(phase.id, { ticketsTarget: Number(e.target.value) })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-indigo-500 focus:outline-none text-sm"
+                    min="0"
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">
+                    GMV Target (£)
+                  </label>
+                  <input
+                    type="number"
+                    value={phase.gmvTarget}
+                    onChange={(e) => updatePhase(phase.id, { gmvTarget: Number(e.target.value) })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-indigo-500 focus:outline-none text-sm"
+                    min="0"
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">
+                    CAC Level
+                  </label>
+                  <select
+                    value={phase.cacLevel}
+                    onChange={(e) => updatePhase(phase.id, { cacLevel: e.target.value as CACLevel })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-indigo-500 focus:outline-none text-sm"
+                  >
+                    <option value="none">No spend</option>
+                    <option value="low">Low (£{CAC_BY_LEVEL.low})</option>
+                    <option value="medium">Medium (£{CAC_BY_LEVEL.medium})</option>
+                    <option value="high">High (£{CAC_BY_LEVEL.high})</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+        
+        <button
+          onClick={handleCalculate}
+          disabled={!campaignValid}
+          className="w-full mt-6 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-6 rounded-lg transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed text-lg shadow-lg"
+        >
+          Calculate Phases
+        </button>
+        
+        {error && (
+          <div className="mt-4 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
+            {error}
+          </div>
+        )}
+      </div>
+      
+      {/* Results Section */}
+      {result && (
+        <>
+          {/* Phase Results */}
+          <div className="bg-white rounded-2xl shadow-xl p-8">
+            <h2 className="text-2xl font-bold text-gray-800 mb-6">📊 Phase Results</h2>
+            
+            <div className="space-y-4">
+              {result.phases.map((phase) => (
+                <div key={phase.id} className="border-2 border-indigo-200 rounded-lg p-6 bg-gradient-to-br from-indigo-50 to-purple-50">
+                  <h3 className="text-lg font-bold text-gray-800 mb-4">{phase.label}</h3>
+                  
+                  <div className="grid md:grid-cols-4 gap-4 mb-4">
+                    <div className="bg-white rounded-lg p-3">
+                      <p className="text-xs text-gray-600 mb-1">Tickets Target</p>
+                      <p className="text-xl font-bold text-gray-900">{phase.ticketsTarget.toLocaleString()}</p>
+                    </div>
+                    <div className="bg-white rounded-lg p-3">
+                      <p className="text-xs text-gray-600 mb-1">GMV Target</p>
+                      <p className="text-xl font-bold text-gray-900">£{phase.gmvTarget.toLocaleString()}</p>
+                    </div>
+                    <div className="bg-white rounded-lg p-3">
+                      <p className="text-xs text-gray-600 mb-1">Ticket Price</p>
+                      <p className="text-xl font-bold text-indigo-600">£{phase.ticketPrice.toFixed(2)}</p>
+                    </div>
+                    <div className="bg-white rounded-lg p-3">
+                      <p className="text-xs text-gray-600 mb-1">Orders Target</p>
+                      <p className="text-xl font-bold text-gray-900">{Math.round(phase.ordersTarget).toLocaleString()}</p>
+                    </div>
+                  </div>
+                  
+                  <div className="grid md:grid-cols-4 gap-4">
+                    <div className="bg-white rounded-lg p-3">
+                      <p className="text-xs text-gray-600 mb-1">Nominal CAC</p>
+                      <p className="text-xl font-bold text-gray-900">
+                        {phase.cacNominal === 0 ? 'Organic' : `£${phase.cacNominal}`}
+                      </p>
+                      <p className="text-xs text-gray-500">{getCACLevelLabel(phases.find(p => p.id === phase.id)?.cacLevel || 'none')}</p>
+                    </div>
+                    <div className="bg-white rounded-lg p-3">
+                      <p className="text-xs text-gray-600 mb-1">Raw Budget</p>
+                      <p className="text-lg font-bold text-gray-500">£{phase.budgetRaw.toLocaleString()}</p>
+                      <p className="text-xs text-gray-400">Before scaling</p>
+                    </div>
+                    <div className="bg-white rounded-lg p-3 border-2 border-green-300">
+                      <p className="text-xs text-green-600 font-semibold mb-1">Final Budget</p>
+                      <p className="text-2xl font-bold text-green-700">£{Math.round(phase.budgetFinal).toLocaleString()}</p>
+                      <p className="text-xs text-green-600">Scaled</p>
+                    </div>
+                    <div className="bg-white rounded-lg p-3 border-2 border-blue-300">
+                      <p className="text-xs text-blue-600 font-semibold mb-1">Effective CAC</p>
+                      <p className="text-2xl font-bold text-blue-700">£{phase.cacEffective.toFixed(2)}</p>
+                      <p className="text-xs text-blue-600">After scaling</p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+          
+          {/* Summary Section */}
+          <div className="bg-gradient-to-br from-green-50 to-teal-50 rounded-2xl shadow-xl p-8 border-2 border-green-200">
+            <h2 className="text-2xl font-bold text-gray-800 mb-6">📈 Campaign Summary</h2>
+            
+            <div className="grid md:grid-cols-2 gap-6">
+              <div className="bg-white rounded-lg p-6">
+                <h3 className="text-sm font-semibold text-gray-700 mb-4">GMV & Orders</h3>
+                <div className="space-y-3">
+                  <div className="flex justify-between items-center">
+                    <span className="text-gray-600">Total GMV (phases):</span>
+                    <span className="font-bold text-xl">£{result.GMV_phases_sum.toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-gray-600">Campaign Target GMV:</span>
+                    <span className="font-bold text-xl">£{Number(gmvTotal).toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between items-center pt-2 border-t">
+                    <span className="text-gray-700 font-semibold">Difference:</span>
+                    <span className={`font-bold text-xl ${result.GMV_phases_sum >= Number(gmvTotal) ? 'text-green-600' : 'text-red-600'}`}>
+                      {result.GMV_phases_sum >= Number(gmvTotal) ? '+' : ''}
+                      £{(result.GMV_phases_sum - Number(gmvTotal)).toLocaleString()}
+                    </span>
+                  </div>
+                  
+                  <div className="pt-4 border-t space-y-2">
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-600">Total Orders (phases):</span>
+                      <span className="font-bold">{Math.round(result.orders_phases_sum).toLocaleString()}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-600">Target Orders:</span>
+                      <span className="font-bold">{Math.round(ordersTotal).toLocaleString()}</span>
+                    </div>
+                  </div>
+                  
+                  <div className="pt-4 border-t">
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-600">Total Tickets:</span>
+                      <span className="font-bold">{result.tickets_phases_sum.toLocaleString()}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="bg-white rounded-lg p-6">
+                <h3 className="text-sm font-semibold text-gray-700 mb-4">Budget & CAC</h3>
+                <div className="space-y-3">
+                  <div className="flex justify-between items-center">
+                    <span className="text-gray-600">Total Budget (phases):</span>
+                    <span className="font-bold text-xl">£{Math.round(result.budget_final_sum).toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-gray-600">Planned Marketing Spend:</span>
+                    <span className="font-bold text-xl">£{Number(budgetTotal).toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between items-center pt-2 border-t">
+                    <span className="text-gray-700 font-semibold">Difference:</span>
+                    <span className="font-bold text-xl text-gray-900">
+                      £{Math.abs(result.budget_final_sum - Number(budgetTotal)).toFixed(2)}
+                    </span>
+                  </div>
+                  
+                  <div className="pt-4 border-t space-y-2">
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-600">Overall Effective CAC:</span>
+                      <span className="font-bold text-2xl text-blue-700">£{result.CAC_effective_overall.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-600">Target CAC:</span>
+                      <span className="font-bold text-xl">£{Number(cacTarget).toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between items-center pt-2 border-t">
+                      <span className="text-gray-700 font-semibold">Difference:</span>
+                      <span className={`font-bold text-xl ${result.CAC_effective_overall <= Number(cacTarget) ? 'text-green-600' : 'text-red-600'}`}>
+                        {result.CAC_effective_overall <= Number(cacTarget) ? '-' : '+'}
+                        £{Math.abs(result.CAC_effective_overall - Number(cacTarget)).toFixed(2)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
